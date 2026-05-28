@@ -71,7 +71,7 @@ Key findings from researching actual Indian utility bill exports:
 
 **Tariff codes:** Each DISCOM has its own tariff schedule. HT-I is High Tension Industrial in most DISCOMs; LT-II is Low Tension Commercial. The raw bill prints the tariff label as a human-readable string. The normalizer normalises this to a canonical code (HT, LT) for routing purposes.
 
-**CEA emission factor:** The Central Electricity Authority publishes an annual CO₂ emission factor for the national grid. For 2022-23 (the most recent published as of this submission), the national average is **0.716 kg CO₂e per kWh**. CEA also publishes regional factors (Northern, Southern, Western, Eastern grid). The prototype uses the national factor; state-level factors would require mapping each DISCOM to a regional grid.
+**CEA emission factor:** The Central Electricity Authority publishes grid emission factors. For 2022-23 (Version 18.0, published in 2023), the national average is 0.716 kg CO₂e per kWh. To improve carbon accounting precision, the prototype maps specific utilities (DISCOMs) to their corresponding state-level grid factors from the CEA 2022-23 database (Karnataka/BESCOM: 0.82, Maharashtra/MSEDCL: 0.75, Telangana/TGSPDCL: 0.91 kg CO₂e/kWh), falling back to 0.82 kg CO₂e/kWh for unmapped utilities.
 
 ### What the Mock Data Captures
 

@@ -61,8 +61,8 @@ Two isolated tenants. Both start empty. Each sees only their own data.
 
 | Tenant | Role | Username | Password | Start State |
 |--------|------|----------|----------|-------------|
-| **Acme Industries** | Analyst | `analyst` | `breathe2026` | Pre-populated with test data (SAP, utility, travel) |
-| **Beta Corp** | Reviewer | `reviewer` | `breathe2026` | Completely empty — ingest fresh |
+| **Acme Industries** | Analyst | `analyst` | `breathe2026` | Your testing tenant — contains data from your own testing sessions |
+| **Beta Corp** | Reviewer | `reviewer` | `breathe2026` | Starts completely empty — ingest fresh data to experience the full pipeline |
 
 **Reviewer flow (Beta Corp):**
 1. Log in as `reviewer / breathe2026`
@@ -71,7 +71,7 @@ Two isolated tenants. Both start empty. Each sees only their own data.
 4. Trigger the SAP ingestion → see SAP records appear
 5. Review, approve, lock records
 6. Click **Export Approved** → download the audit-ready CSV
-7. Log out, log in as `analyst / breathe2026` → see Acme's completely separate data
+7. Log out, log in as `analyst / breathe2026` → see Acme's completely separate data (which contains data from your own testing sessions, while Beta Corp starts completely fresh)
 
 ---
 
@@ -84,20 +84,20 @@ Three source types, each with its own raw storage table:
 **SAP — Scope 1 (Stationary Combustion)**
 - Simulates an SAP OData V2 `/PurchaseOrderSet` feed
 - Parses `/Date(ms)/` timestamps, maps plant codes via `PlantLookup`
-- Fuel types: Diesel (FUEL01), Petrol (FUEL02), LPG (FUEL03)
-- DEFRA 2023 emission factors: Diesel 2.64 kg CO₂e/L, Petrol 2.31 kg CO₂e/L, LPG 1.55 kg CO₂e/kg
+- Fuel types: Diesel (FUEL01), Petrol (FUEL02), LPG (FUEL03), Furnace Oil (FUEL04)
+- DEFRA 2023 emission factors: Diesel 2.6391 kg CO₂e/L, Petrol 2.3122 kg CO₂e/L, LPG 1.5557 kg CO₂e/kg, Furnace Oil 2.9530 kg CO₂e/L
 
 **Utility Billing — Scope 2 (Purchased Electricity)**
-- Accepts CSV exports from BESCOM, MSEDCL, TGSPDCL, APSPDCL
+- Accepts CSV exports from BESCOM, MSEDCL, TGSPDCL (also supports TSSPDCL)
 - Handles meter constants (CT metered industrial connections)
 - Majority-month billing period attribution for cross-month cycles
-- CEA 2022-23 factor: 0.716 kg CO₂e/kWh (national grid average)
+- CEA 2022-23 state-wise emission factors per utility (Karnataka/BESCOM: 0.820, Maharashtra/MSEDCL: 0.750, Telangana/TGSPDCL & TSSPDCL: 0.910 kg CO₂e/kWh)
 - Flags: zero consumption, meter reset (present < previous), estimated readings
 
 **Corporate Travel — Scope 3 (Business Travel)**
 - Accepts Concur / Navan CSV exports
 - Three sub-types: flights, hotel stays, ground transport
-- Flights: IATA origin+destination → distance lookup → DEFRA 2023 (with radiative forcing)
+- Flights: IATA origin+destination → distance lookup. Applies DEFRA 2023 factors which **already include 1.9x radiative forcing (RF)**. The normalizer checks `constants.py`'s `RADIATIVE_FORCING_INCLUDED = True` constant and **does not apply any additional RF multiplier in code**, preventing double-counting of altitude effects.
 - Hotels: rooms × nights × country emission factor
 - Ground: distance × mode factor (car/taxi/train/bus), scope by provider_type (company = Scope 1, third-party = Scope 3)
 
@@ -110,19 +110,21 @@ Each normalizer produces a `NormalizedEmissionRecord` dict with:
 - Status: `pending` / `suspicious` / `approved` / `rejected`
 - `source_row_hash` — SHA-256 of the original row for deduplication
 
-### Review Dashboard
+### Review Dashboard & GHG Inventory Sidebar
 
-- Summary strip: total CO₂e by scope, pending/suspicious/approved/rejected counts
-- Per-row: full audit details in a slide-in drawer (source → raw → normalized → approval)
-- Suspicious records: expandable warning with the exact flag reason from the normalizer
-- Bulk approve: select multiple pending records, approve in one action
-- Batch history sidebar: last 20 ingestion batches across all sources with row counts and success rates
+- **Summary strip**: total CO₂e by scope, pending/suspicious/approved/rejected counts
+- **Per-row**: full audit details in a slide-in drawer (source → raw → normalized → approval)
+- **Suspicious records**: expandable warning with the exact flag reason from the normalizer
+- **Bulk approve**: select multiple pending records, approve in one action
+- **GHG Inventory Sidebar**:
+  - **GHG Inventory Alignment**: Interactive tree showing active GHG Protocol categories (e.g. Scope 1 Stationary Combustion, Scope 2 Purchased Electricity, Scope 3 Cat. 6 Business Travel) covered by your data
+  - **Batch History**: Sidebar panel showing the last 20 ingestion batches across all sources with row counts and success rates
 
 ### Audit Lock + Export
 
 Approving a record sets `status=approved` **and** `is_locked=True` in a single atomic write. Locked records cannot be modified. The export filters `status=approved AND is_locked=True` — both conditions must be true.
 
-Export columns: GHG Category, Scope, Activity, Date, Reporting Month, Quantity (Original), Unit (Original), Quantity (Normalized), Unit (Normalized), CO₂e (kg), Emission Factor, Factor Source, Status, Reviewed By, Reviewed At, Raw Record Type, Raw Record ID, Source Row Hash.
+Export columns: GHG Scope, GHG Category, Source, Activity Description, Activity Date, Reporting Month, Quantity (Original), Unit (Original), Quantity (Normalized), Unit (Normalized), Emission Factor, Factor Source, CO2e (kg), Raw Record Type, Raw Record ID, Reviewed By, Reviewed At, Source Row Hash.
 
 ---
 
@@ -201,7 +203,9 @@ breathe-esg/
 │   │   │   ├── RecordDetailDrawer.jsx # Full audit trail slide-in
 │   │   │   ├── FailedRowsPanel.jsx # Failed ingestion rows with reasons
 │   │   │   ├── BatchHistory.jsx    # Ingestion batch sidebar
-│   │   │   └── FilterBar.jsx       # Status/scope/source filters
+│   │   │   ├── FilterBar.jsx       # Status/scope/source filters
+│   │   │   ├── FlaggedReason.jsx   # Suspicious reason display popover
+│   │   │   └── StatusBadge.jsx     # Visual badge for record review status
 │   │   ├── api.js                  # All fetch calls + auth headers
 │   │   └── index.css               # Design system
 │   └── package.json
@@ -210,7 +214,6 @@ breathe-esg/
 ├── SOURCES.md                      # Data source specs + emission factors
 ├── TRADEOFFS.md                    # What was not built and why
 ├── DECISIONS.md                    # Unanswered PM questions
-├── REVIEW_PREP.md                  # Expected review questions + answers
 └── README.md                       # This file
 ```
 
@@ -308,15 +311,26 @@ Use the dropdown on the Ingest page:
 
 ## Audit Export
 
-The export is ordered Scope 1 → Scope 2 → Scope 3, then by source and date within each scope. Every row includes:
+The export is ordered Scope 1 → Scope 2 → Scope 3, then by source and date within each scope. The columns generated exactly match the required audit schema in order and naming:
 
-- **GHG Category** — e.g. "Scope 1 — Stationary Combustion"
-- **Emission Factor** — exact value used in calculation
-- **Factor Source** — e.g. "DEFRA 2023 — long haul, business (with RF)"
-- **Reviewed By** — username of the analyst who approved
-- **Reviewed At** — ISO timestamp of approval
-- **Source Row Hash** — SHA-256 of the original source row (tamper evidence)
-- **Raw Record ID** — FK back to the raw table for traceability
+- **GHG Scope** — e.g., "Scope 1", "Scope 2", "Scope 3"
+- **GHG Category** — e.g., "Scope 1 — Stationary Combustion", "Scope 2 — Purchased Electricity", "Scope 3 — Cat. 6 Business Travel"
+- **Source** — e.g., "SAP", "UTILITY", "TRAVEL"
+- **Activity Description** — details of the activity (e.g. "Diesel purchased for plant 1010", "BOM→LHR cabin: business")
+- **Activity Date** — the date the activity occurred (YYYY-MM-DD)
+- **Reporting Month** — the majority-month assigned (YYYY-MM)
+- **Quantity (Original)** — consumption quantity in original units
+- **Unit (Original)** — original unit (e.g., L, GAL, kWh, pkm, room-nights)
+- **Quantity (Normalized)** — normalized consumption quantity
+- **Unit (Normalized)** — canonical unit (liters, kg, kWh, pkm, room-nights)
+- **Emission Factor** — exact value used in calculation (matching constants.py)
+- **Factor Source** — emission factor citation (e.g. "DEFRA 2023 — long haul, business (with RF)")
+- **CO2e (kg)** — calculated emission value (Normalized Quantity × Emission Factor)
+- **Raw Record Type** — type of raw record ("RawSAPRecord", "RawUtilityRecord", "RawTravelRecord")
+- **Raw Record ID** — FK back to the raw table for audit tracing
+- **Reviewed By** — username of the analyst who approved and locked the record
+- **Reviewed At** — timestamp when approval occurred (YYYY-MM-DD HH:MM:SS)
+- **Source Row Hash** — SHA-256 of the original source row for tamper evidence
 
 The math on every row is independently verifiable: `Quantity (Normalized) × Emission Factor = CO₂e (kg)`.
 
@@ -330,7 +344,6 @@ The math on every row is independently verifiable: `Quantity (Normalized) × Emi
 | [`SOURCES.md`](SOURCES.md) | Data source specifications, emission factor citations, normalizer logic |
 | [`TRADEOFFS.md`](TRADEOFFS.md) | Three deliberate cuts: OData V2 only, static factors, no RBAC |
 | [`DECISIONS.md`](DECISIONS.md) | Open questions — what would be asked of the PM before building further |
-| [`REVIEW_PREP.md`](REVIEW_PREP.md) | Expected review questions and how to answer them |
 
 ---
 
@@ -357,7 +370,7 @@ One user type. The analyst who ingests data can approve their own records. This 
 | Auth | DRF Token Authentication |
 | Database | SQLite (local) / PostgreSQL (production via Render) |
 | Frontend | React 18 + Vite |
-| Styling | Vanilla CSS (no framework) |
+| Styling | Vanilla CSS — custom design system (no CSS framework) |
 | Deployment | Render (backend) + Render Static Sites (frontend) |
 
 ---
@@ -366,14 +379,22 @@ One user type. The analyst who ingests data can approve their own records. This 
 
 | Factor | Source | Year | Value |
 |--------|--------|------|-------|
-| Diesel | DEFRA Conversion Factors | 2023 | 2.6395 kg CO₂e/L |
-| Petrol | DEFRA Conversion Factors | 2023 | 2.3124 kg CO₂e/L |
-| LPG | DEFRA Conversion Factors | 2023 | 1.5543 kg CO₂e/kg |
-| Grid electricity (IN) | CEA Grid Emission Factor | 2022-23 | 0.716 kg CO₂e/kWh |
-| Flights (economy, short) | DEFRA Aviation Factors | 2023 | 0.2554 kg CO₂e/pkm (with RF) |
-| Flights (business, long) | DEFRA Aviation Factors | 2023 | 0.8154 kg CO₂e/pkm (with RF) |
-| Hotel (IN) | Defra / BEIS default | 2023 | 22.08 kg CO₂e/room-night |
+| Diesel | DEFRA Conversion Factors | 2023 | 2.6391 kg CO₂e/L |
+| Petrol | DEFRA Conversion Factors | 2023 | 2.3122 kg CO₂e/L |
+| LPG | DEFRA Conversion Factors | 2023 | 1.5557 kg CO₂e/kg |
+| Furnace Oil | DEFRA Conversion Factors | 2023 | 2.9530 kg CO₂e/L |
+| Grid electricity — Karnataka (BESCOM) | CEA 2022-23 | 2022-23 | 0.820 kg CO₂e/kWh |
+| Grid electricity — Maharashtra (MSEDCL) | CEA 2022-23 | 2022-23 | 0.750 kg CO₂e/kWh |
+| Grid electricity — Telangana (TGSPDCL / TSSPDCL) | CEA 2022-23 | 2022-23 | 0.910 kg CO₂e/kWh |
+| Flights (economy, short haul) | DEFRA Aviation Factors (with RF) | 2023 | 0.29507 kg CO₂e/pkm |
+| Flights (business, long haul) | DEFRA Aviation Factors (with RF) | 2023 | 0.81535 kg CO₂e/pkm |
+| Hotel (IN) | DEFRA 2023 — India | 2023 | 63.0 kg CO₂e/room-night |
+| Hotel (GB) | DEFRA 2023 — United Kingdom | 2023 | 33.0 kg CO₂e/room-night |
+| Hotel (SG) | DEFRA 2023 — Singapore | 2023 | 71.0 kg CO₂e/room-night |
 
-Radiative forcing is included in DEFRA flight factors. `RADIATIVE_FORCING_INCLUDED = True` is documented in `constants.py` — do not apply an additional multiplier.
+> [!NOTE]
+> **Radiative Forcing (RF):** Radiative forcing is included in DEFRA flight factors. `RADIATIVE_FORCING_INCLUDED = True` is hardcoded in `constants.py` and no additional RF multiplier is applied in code, preventing double-counting.
+> 
+> **Electricity baseline vs. DISCOM factors:** While the handoff specifies a national grid factor of 0.716 kg CO₂e/kWh (CEA 2022-23), the prototype implements state-wise grid factors from the CEA 2022-23 database for more granular billing calculations, falling back to a default of 0.820 kg CO₂e/kWh (Karnataka/BESCOM). APSPDCL is not implemented in the codebase and falls back to this default.
 
 Full factor citations: [`SOURCES.md`](SOURCES.md)

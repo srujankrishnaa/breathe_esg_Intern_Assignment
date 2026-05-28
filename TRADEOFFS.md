@@ -25,9 +25,9 @@ Clients in German-language SAP configurations may receive column headers like `B
 
 ## 2. Static Emission Factors — DEFRA 2023 and CEA 2022-23, Hardcoded
 
-**What was built:** All emission factors are hardcoded constants in `ingestion/normalizers/constants.py`. SAP fuel factors come from DEFRA 2023 (UK government conversion factors, widely used as an international reference). Electricity factors use the CEA 2022-23 national grid emission factor for India (0.716 kg CO₂e per kWh). Flight factors come from DEFRA 2023 aviation section, with radiative forcing already baked into the factor values.
+**What was built:** All emission factors are hardcoded constants in `ingestion/normalizers/constants.py`. SAP fuel factors come from DEFRA 2023 (UK government conversion factors, widely used as an international reference). Electricity factors use state-wise grid factors from the CEA 2022-23 database for India (e.g. Karnataka: 0.820, Maharashtra: 0.750, Telangana: 0.910 kg CO₂e/kWh), falling back to a default of 0.820 kg CO₂e/kWh. Flight factors come from DEFRA 2023 aviation section, with radiative forcing already baked into the factor values.
 
-**What was not built:** An emission factor management interface, a versioned factor table, an annual update pipeline, region-specific electricity factors, or a mechanism to reprocess historical records when factors change.
+**What was not built:** An emission factor management interface, a versioned factor table, an annual update pipeline, or a mechanism to reprocess historical records when factors change.
 
 **What breaks in production:**
 
@@ -35,7 +35,7 @@ Emission factors go stale. CEA publishes updated national and regional grid fact
 
 There is no way to reprocess historical records when factors update. The `emission_factor` and `emission_factor_source` fields are written once at normalization time. If CEA releases a corrected factor, every historical electricity record needs to be re-normalized from its raw record. The infrastructure for that reprocessing does not exist.
 
-Region-specific grid factors are more accurate than the national average. DEFRA 2023 has regional UK factors; CEA publishes state-level factors for India. Using the national average understates emissions for states with coal-heavy grids (Jharkhand, Chhattisgarh) and overstates them for states with high renewable penetration (Karnataka, Tamil Nadu, Rajasthan). The current model stores a single national factor for all utility records regardless of which state the meter is in.
+The static factors cannot be edited dynamically. If a DISCOM is not in the hardcoded state-wise lookup table, it falls back to a default state-level factor (Karnataka/BESCOM: 0.82) rather than resolving to its actual regional grid factor or the national average. A real production system would require a dynamic DISCOM/state lookup service.
 
 **The cost of the cut:** Annual factor updates require a code change and redeployment. Any client undergoing a rigorous third-party audit will need factor versioning and the ability to demonstrate which factor was applied to which record at which point in time.
 
