@@ -1,0 +1,74 @@
+# ── Python / Django ──────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Django
+*.sqlite3
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+/backend/staticfiles/
+/backend/mediafiles/
+
+# ── Environment / Secrets ────────────────────────────────────
+.env
+.env.local
+.env.*.local
+# Keep the example file
+!.env.example
+
+# ── Node / Frontend ──────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Mock Data ────────────────────────────────────────────────
+# Reviewer receives these files separately — excluded from repo
+backend/mock_data/
+
+# ── OS / Editor ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# ── Test / Debug artefacts ───────────────────────────────────
+backend/test_*.py
+backend/col_compare.py
+backend/*.log
+.playwright-mcp/
+
+# ── Exports (generated files) ────────────────────────────────
+emissions_inventory_*.csv
+
+# ── Render deployment ────────────────────────────────────────
+.render-buildpacks.json
