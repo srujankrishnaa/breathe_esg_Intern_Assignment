@@ -200,11 +200,11 @@ def _normalize_flight(raw_record) -> dict:
 
     critical_flags = [
         f for f in flags
-        if "cancelled/unused" in f
-        or "Missing origin" in f
-        or "Missing destination" in f
-        or "Unknown route" in f
-        or "Cannot determine flight date" in f
+        if "did not take place" in f
+        or "origin airport code is blank" in f
+        or "destination airport code is blank" in f
+        or "not in the flight distance database" in f
+        or "flight date could not be determined" in f
     ]
     if critical_flags:
         raise ValueError(" | ".join(critical_flags))
@@ -321,10 +321,9 @@ def _normalize_hotel(raw_record) -> dict:
 
     critical_flags = [
         f for f in flags
-        if "missing" in f
-        or "Negative nights" in f
-        or "Zero nights" in f
-        or "Cannot determine hotel check-in" in f
+        if "is missing" in f
+        or "before check-in date" in f
+        or "zero nights recorded" in f
     ]
     if critical_flags:
         raise ValueError(" | ".join(critical_flags))

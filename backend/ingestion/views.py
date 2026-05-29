@@ -165,7 +165,7 @@ class SAPTriggerIngestView(APIView):
         duplicates_skipped = 0
         failed_rows = []
 
-        for item in items:
+        for item_idx, item in enumerate(items):
             try:
                 # Parse SAP date
                 doc_date_raw = item.get('DocumentDate', '')
@@ -225,7 +225,7 @@ class SAPTriggerIngestView(APIView):
                 logger.warning('SAP row normalization failed (ValueError): %s', e)
                 rows_failed += 1
                 failed_rows.append({
-                    'row': items.index(item) + 1,
+                    'row': item_idx + 1,
                     'reason': str(e),
                     'source_field': item.get('MaterialGroup', 'unknown'),
                 })
@@ -233,7 +233,7 @@ class SAPTriggerIngestView(APIView):
                 logger.exception('SAP row ingestion unexpected error: %s', e)
                 rows_failed += 1
                 failed_rows.append({
-                    'row': items.index(item) + 1,
+                    'row': item_idx + 1,
                     'reason': f'Unexpected error: {str(e)}',
                     'source_field': 'unknown',
                 })
@@ -313,7 +313,7 @@ class UtilityIngestView(APIView):
         duplicates_skipped = 0
         failed_rows = []
 
-        for row in rows:
+        for row_idx, row in enumerate(rows):
             try:
                 # Compute dedup hash
                 meter_id = (
@@ -394,7 +394,7 @@ class UtilityIngestView(APIView):
                 logger.warning('Utility row normalization failed (ValueError): %s', e)
                 rows_failed += 1
                 failed_rows.append({
-                    'row': rows.index(row) + 1,
+                    'row': row_idx + 1,
                     'reason': str(e),
                     'source_field': row.get('utility', 'unknown'),
                 })
@@ -402,7 +402,7 @@ class UtilityIngestView(APIView):
                 logger.exception('Utility row ingestion unexpected error: %s', e)
                 rows_failed += 1
                 failed_rows.append({
-                    'row': rows.index(row) + 1,
+                    'row': row_idx + 1,
                     'reason': f'Unexpected error: {str(e)}',
                     'source_field': 'unknown',
                 })
@@ -479,7 +479,7 @@ class TravelIngestView(APIView):
         duplicates_skipped = 0
         failed_rows = []
 
-        for row in rows:
+        for row_idx, row in enumerate(rows):
             try:
                 # Compute dedup hash
                 row_hash = _compute_hash(
@@ -581,7 +581,7 @@ class TravelIngestView(APIView):
                 logger.warning('Travel row normalization failed (ValueError): %s', e)
                 rows_failed += 1
                 failed_rows.append({
-                    'row': rows.index(row) + 1,
+                    'row': row_idx + 1,
                     'reason': str(e),
                     'source_field': row.get('expense_type', 'unknown'),
                 })
@@ -589,7 +589,7 @@ class TravelIngestView(APIView):
                 logger.exception('Travel row ingestion unexpected error: %s', e)
                 rows_failed += 1
                 failed_rows.append({
-                    'row': rows.index(row) + 1,
+                    'row': row_idx + 1,
                     'reason': f'Unexpected error: {str(e)}',
                     'source_field': 'unknown',
                 })
