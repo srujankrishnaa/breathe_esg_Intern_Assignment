@@ -1,0 +1,46 @@
+{
+  "value": [
+    {
+      "PurchaseOrder": "4500012501",
+      "PurchaseOrderItem": "00010",
+      "CompanyCode": "IN01",
+      "PurchasingOrganization": "IN00",
+      "Plant": "1010",
+      "Material": "DSLHSD001",
+      "MaterialGroup": "FUEL01",
+      "OrderQuantity": "150000",
+      "PurchaseOrderQuantityUnit": "L",
+      "DocumentDate": "/Date(1704067200000)/",
+      "Supplier": "1000123",
+      "DocumentCurrency": "INR"
+    },
+    {
+      "PurchaseOrder": "4500012502",
+      "PurchaseOrderItem": "00010",
+      "CompanyCode": "IN01",
+      "PurchasingOrganization": "IN00",
+      "Plant": "2030",
+      "Material": "LPGINDU02",
+      "MaterialGroup": "FUEL03",
+      "OrderQuantity": "0",
+      "PurchaseOrderQuantityUnit": "KG",
+      "DocumentDate": "/Date(1706745600000)/",
+      "Supplier": "1000456",
+      "DocumentCurrency": "INR"
+    },
+    {
+      "PurchaseOrder": "4500012503",
+      "PurchaseOrderItem": "00010",
+      "CompanyCode": "IN01",
+      "PurchasingOrganization": "IN00",
+      "Plant": "3050",
+      "Material": "DSLHSD001",
+      "MaterialGroup": "FUEL01",
+      "OrderQuantity": "2500",
+      "PurchaseOrderQuantityUnit": "L",
+      "DocumentDate": "/Date(1709251200000)/",
+      "Supplier": "1000789",
+      "DocumentCurrency": "INR"
+    }
+  ]
+}

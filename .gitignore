@@ -48,7 +48,8 @@ pnpm-debug.log*
 
 # ── Mock Data ────────────────────────────────────────────────
 # Reviewer receives these files separately — excluded from repo
-backend/mock_data/
+backend/mock_data/travel/
+backend/mock_data/utility/
 
 # ── OS / Editor ──────────────────────────────────────────────
 .DS_Store

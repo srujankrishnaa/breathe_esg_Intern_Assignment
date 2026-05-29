@@ -1,0 +1,74 @@
+{
+  "value": [
+    {
+      "PurchaseOrder": "4500012301",
+      "PurchaseOrderItem": "00010",
+      "CompanyCode": "IN01",
+      "PurchasingOrganization": "IN00",
+      "Plant": "1010",
+      "Material": "DSLHSD001",
+      "MaterialGroup": "FUEL01",
+      "OrderQuantity": "5000",
+      "PurchaseOrderQuantityUnit": "L",
+      "DocumentDate": "/Date(1704067200000)/",
+      "Supplier": "1000123",
+      "DocumentCurrency": "INR"
+    },
+    {
+      "PurchaseOrder": "4500012302",
+      "PurchaseOrderItem": "00010",
+      "CompanyCode": "IN01",
+      "PurchasingOrganization": "IN00",
+      "Plant": "2030",
+      "Material": "LPGINDU02",
+      "MaterialGroup": "FUEL03",
+      "OrderQuantity": "850",
+      "PurchaseOrderQuantityUnit": "KG",
+      "DocumentDate": "/Date(1706745600000)/",
+      "Supplier": "1000456",
+      "DocumentCurrency": "INR"
+    },
+    {
+      "PurchaseOrder": "4500012303",
+      "PurchaseOrderItem": "00010",
+      "CompanyCode": "IN01",
+      "PurchasingOrganization": "IN00",
+      "Plant": "3050",
+      "Material": "FURN-OIL03",
+      "MaterialGroup": "FUEL04",
+      "OrderQuantity": "12.5",
+      "PurchaseOrderQuantityUnit": "TO",
+      "DocumentDate": "/Date(1709251200000)/",
+      "Supplier": "1000789",
+      "DocumentCurrency": "INR"
+    },
+    {
+      "PurchaseOrder": "4500012304",
+      "PurchaseOrderItem": "00010",
+      "CompanyCode": "IN01",
+      "PurchasingOrganization": "IN00",
+      "Plant": "1010",
+      "Material": "PTRLMS004",
+      "MaterialGroup": "FUEL02",
+      "OrderQuantity": "300",
+      "PurchaseOrderQuantityUnit": "GAL",
+      "DocumentDate": "/Date(1711929600000)/",
+      "Supplier": "1000123",
+      "DocumentCurrency": "INR"
+    },
+    {
+      "PurchaseOrder": "4500012305",
+      "PurchaseOrderItem": "00010",
+      "CompanyCode": "IN01",
+      "PurchasingOrganization": "IN00",
+      "Plant": "2030",
+      "Material": "DSLHSD001",
+      "MaterialGroup": "FUEL01",
+      "OrderQuantity": "7500",
+      "PurchaseOrderQuantityUnit": "L",
+      "DocumentDate": "/Date(1714521600000)/",
+      "Supplier": "1000456",
+      "DocumentCurrency": "INR"
+    }
+  ]
+}
