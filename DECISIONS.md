@@ -15,7 +15,7 @@ Every ambiguity resolved, what was chosen, and why.
 
 **Why:** OData is the format a new enterprise client's IT team is most likely to expose without custom development. It returns JSON. The URL structure is predictable (`/sap/opu/odata/sap/MM_PUR_POSIT_SRV/PurchaseOrderSet`). The date format (`/Date(milliseconds)/`) is well-documented, even if unpleasant. IDoc requires an ALE/EDI configuration that most clients have not set up for data extraction purposes. BAPI requires an RFC-capable connector that adds infrastructure dependencies outside the prototype scope.
 
-**What to ask the PM:** Which SAP modules does the client have active? Is SAP Gateway configured? Is there a technical contact on the client side who can share the exact OData endpoint and entity set name they use for procurement?
+**What I would ask the PM:** Which SAP modules does the client have active? Is SAP Gateway configured? Is there a technical contact on the client side who can share the exact OData endpoint and entity set name they use for procurement?
 
 **What breaks:** Clients on older SAP versions without Gateway, or clients using SAP S/4HANA with a different OData namespace, cannot be onboarded without a custom adapter. Documented in TRADEOFFS.md.
 
@@ -27,11 +27,15 @@ Every ambiguity resolved, what was chosen, and why.
 
 **Decision:** Portal CSV export.
 
-**Why:** PDF parsing requires OCR or layout-aware PDF parsing (pdfplumber, camelot). Bill layouts differ across utilities and change without notice. CSV from a portal is already structured and is the format a facilities manager actually uses when asked to "pull the electricity data." Direct utility APIs are not consistently available across the three utilities represented in the mock data.
+**Why:** PDF parsing requires OCR or layout-aware PDF parsing (pdfplumber, camelot). Bill layouts differ across utilities and change without notice. CSV from a portal is already structured and is the format a facilities manager actually uses when asked to "pull the electricity data." Direct utility APIs are not consistently available across the three utilities represented in the mock data. Additionally, adopting a standardized CSV export format makes it significantly easier to mimic and programmatically generate high-fidelity test files by understanding how the actual real-world data logs look in practice.
 
 The 19-column cross-utility schema in `RawUtilityRecord` was designed around actual BESCOM, MSEDCL, and TGSPDCL portal exports. Each utility uses a different identifier field for the account (rr_number, consumer_number, usc_no). Each includes a raw tariff label that must be normalised. All include meter readings and derived consumption.
 
-**What to ask the PM:** Does the client have a consistent export format across all three utilities, or does the facilities team export from three different portals? Do they have historical data going back 12 months, or only the last few bills?
+**What I would ask the PM:**
+- Will the facilities managers upload direct CSV portal exports, or will they be manually transcribing from PDF bills?
+- Do the portal exports already apply the meter constant to the reported consumed units, or do I need to multiply the reading difference by the constant ourselves? Are the units always explicitly kWh?
+- What are the exact customer tariff structures I need to support, and how should they map to HT/LT or commercial reporting categories?
+- Since billing cycles do not align with calendar months (e.g. Dec 18 to Jan 17), does the client approve of using my majority-of-days rule for month attribution, or do they require splitting emissions proportionally across both calendar months?
 
 **What breaks:** If a utility changes its CSV column layout, the parser breaks silently — it would produce zero-value records rather than errors unless column validation is added. Documented in TRADEOFFS.md.
 
@@ -43,9 +47,12 @@ The 19-column cross-utility schema in `RawUtilityRecord` was designed around act
 
 **Decision:** CSV export from the travel platform.
 
-**Why:** OAuth requires per-client credential provisioning, refresh token management, and handling pagination across potentially thousands of booking records. For a prototype evaluating the ingestion pipeline and data model, this is disproportionate infrastructure. The CSV schema was designed to match the actual column structure of a Concur trip export: external booking ID, segment ID, carrier codes, cabin class, IATA origin/destination, hotel check-in/check-out, ground transport mode.
+**Why:** OAuth requires per-client credential provisioning, refresh token management, and handling pagination across potentially thousands of booking records. For a prototype evaluating the ingestion pipeline and data model, this is disproportionate infrastructure. The CSV schema was designed to match the actual column structure of a Concur trip export: external booking ID, segment ID, carrier codes, cabin class, IATA origin/destination, hotel check-in/check-out, ground transport mode. Additionally, by reviewing outputs from different travel platforms, I can easily analyze their underlying data structures and mimic them identically in a simplified CSV export format for testing and ingestion.
 
-**What to ask the PM:** Is the client using Concur, Navan, or a regional TMC? Does their travel admin have export access, or does data extraction require IT involvement? How frequently would data need to be ingested — monthly batch is fine for CSV; weekly or daily would push toward API.
+**What I would ask the PM:**
+- What travel management platforms (e.g., Concur, Navan, or a local regional TMC) are currently in use, and does the client's travel administrator already have access to run manual exports?
+- What ingestion frequency is acceptable for travel reports (e.g., a monthly batch upload of trip CSVs vs. real-time automated API pulls)?
+- Since Scope 3 Category 6 (Business Travel) includes numerous subcategories (e.g., flight classes, short/medium/long-haul segments, specific hotel region emission factors, and third-party vehicle types), does the client require highly detailed category breakdown logs, or is the current high-level aggregation sufficient?
 
 **What breaks:** Manual CSV upload is operationally fragile. A travel admin who forgets to export for two months, or exports the wrong date range, creates gaps in the emissions record. Documented in TRADEOFFS.md.
 
@@ -114,7 +121,49 @@ Hash inputs per source:
 
 ---
 
-## Questions Not Resolved (Would Ask the PM)
+### Fallback Grid Factor for Unmapped Utilities
+
+**Decision:** Default fallback factor is set to `0.82 kg CO₂e/kWh` (corresponding to Karnataka's grid factor/BESCOM).
+
+**Why:** The primary testing tenant, Acme Industries, has its main operations based in Karnataka/BESCOM. Using `0.82` represents a conservative estimation approach (higher baseline emissions value) that matches the primary facility's region when specific DISCOM mapping is unavailable. In a production deployment, the fallback factor would default to the national grid average (CEA 2022-23 publishes `0.716 kg CO₂e/kWh`) or require a dynamic DISCOM/state lookup service to avoid regional bias.
+
+---
+
+### Simplified Tariff Classification (HT vs LT)
+
+**Decision:** The `tariff` field stores a normalized classification (`HT` or `LT`), rather than preserving full utility-specific tariff codes (like LT-II, HT-1).
+
+**Why:** Indian utilities feature highly fragmented and frequently changing tariff schedules. Coercing these into the core voltage classifications (High Tension and Low Tension) simplifies the database schema and routing logic, while the human-readable utility-specific label is preserved in the `raw_tariff_label` field to maintain full audit trail fidelity.
+
+---
+
+### Non-CT Meter Constant Default
+
+**Decision:** `meter_constant` defaults to `1.0000` (or `null`) for direct-read connections.
+
+**Why:** Only Current Transformer (CT) metered industrial connections require a multiplier ratio (such as `40` for my Mumbai factory). Defaulting the constant to `1.0000` allows the consumption parser to run the same mathematical formula (`units_consumed * meter_constant`) across all connections without adding conditional branches.
+
+---
+
+### Omission of Billing Amount
+
+**Decision:** Financial data (`amount_billed` or `bill_amount`) is explicitly excluded from the database schema.
+
+**Why:** The prototype's scope is strictly confined to carbon emissions inventory tracking, not financial auditing or utility bill reconciliation. Any billing dispute workflows are out of scope; thus, financial metrics are omitted to avoid database overhead and security complexity.
+
+---
+
+## Infrastructure & Deployment Decisions
+
+### Backend Hosting & Database
+
+**Decision:** Deployed the backend on Render as a Web Service with a managed PostgreSQL database, and configured an UptimeBot to keep the server alive.
+
+**Why:** A primary ambiguity for prototyping is how to deploy a free-tier service without sacrificing UX due to "cold starts" or losing data between sessions (which happens with ephemeral file-based DBs like SQLite on ephemeral file systems). I chose Render because it natively supports Docker and PostgreSQL. To resolve the free-tier sleep issue (where free instances spin down after 15 minutes of inactivity, causing 30-60 second delays on the next request), I implemented an external pinging mechanism (like UptimeBot or a Cron job) to periodically hit the backend's `/api/health` endpoint. This ensures the prototype remains fast and responsive for reviewers without requiring an immediate upgrade to a paid tier.
+
+---
+
+## Questions Not Resolved (What I Would Ask the PM)
 
 1. What is the client's fiscal year — April–March (India standard) or calendar year? This affects which reporting_month a cross-boundary billing period belongs to.
 
@@ -130,8 +179,8 @@ Hash inputs per source:
 
 7. **Bulk approve scope:** When an analyst clicks "Approve All Pending," should suspicious records be included or excluded? Current implementation excludes suspicious records from bulk approve — they require individual review. Sweep ESG's governance philosophy suggests suspicious records should always be individually reviewed, but some clients may want a "bulk approve with override" option for efficiency. The current behavior is the conservative default.
 
-8. **Suspicious record override workflow:** When an analyst approves a suspicious record, should they be required to provide a justification note? Current prototype allows approval without a note. A production system would likely require `edit_note` to be non-empty when overriding a suspicious flag — this creates a reviewable evidence trail for auditors. The `edited_manually` and `edit_note` fields on `NormalizedEmissionRecord` already exist for this purpose but are not yet wired to the UI.
+8. **Suspicious record override workflow:** When an analyst approves a suspicious record, should they be required to provide a justification note? Current prototype allows approval without a note. A production system would likely require a mandatory justification note when overriding a suspicious flag to create a reviewable evidence trail for auditors.
 
 9. **Evidence attachment:** Should the review dashboard support attaching evidence (PDFs, screenshots, supplier confirmations) to approved records? Sweep ESG's platform emphasizes evidence management alongside approvals. The current prototype records _who_ approved and _when_, but not the _supporting document_ that justified the approval. Adding an `EvidenceAttachment` model with file upload is a natural production extension.
 
-10. **Record edit capability:** Should analysts be able to correct data before approving (e.g., fix a typo in quantity, update an emission factor)? The model supports this via `edited_manually` and `edit_note` fields, but no edit UI exists. Enabling edits introduces complexity — the original value must be preserved, the edit must be logged, and the CO₂e recalculated. This is a design decision that trades data integrity against analyst flexibility.
+10. **Record edit capability:** Should analysts be able to correct data before approving (e.g., fix a typo in quantity)? The current implementation strictly enforces **no manual edits** after normalization to maintain an unbroken audit trail—if data is wrong, it must be fixed at the source and re-ingested. While the database schema includes `edited_manually` and `edit_note` fields as placeholders, I deliberately left them inactive. Enabling in-app edits would trade data integrity for analyst flexibility and severely complicate the auditor's ability to trust the data.

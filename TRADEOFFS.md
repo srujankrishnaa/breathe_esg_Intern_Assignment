@@ -7,7 +7,7 @@ Three things deliberately not built, and exactly what breaks because of each cut
 
 ## 1. Single SAP Format — OData V2 Only
 
-**What was built:** The SAP ingestion pipeline handles one format: OData V2 JSON with the PurchaseOrderSet entity structure. The mock generator produces this format. The test simulation payloads are in this format. The normalizer expects this format.
+**What was built:** The SAP ingestion pipeline handles one format: OData V2 JSON with the PurchaseOrderSet entity structure. By exposing a direct HTTP endpoint (`/api/ingest/sap/trigger/`), it supports REST-style API calling, which makes simulating and mimicking the SAP integration flow extremely straightforward. The mock generator produces this format, the test simulation payloads are in this format, and the normalizer expects this structure.
 
 **What was not built:** IDoc flat file parsing, BAPI function module integration, SAP S/4HANA OData V4 support, German column header variants, RFC-based connectors.
 
@@ -43,22 +43,16 @@ The static factors cannot be edited dynamically. If a DISCOM is not in the hardc
 
 ## 3. No RBAC — Single User Role
 
-**What was built:** One user type. The analyst user can ingest data, view all records, approve records, and reject records. There is no separation between who ingests data and who reviews it.
+**What was built:** One user type. The analyst user can ingest data, view all records, approve records, and reject records. There is no separation between who ingests data and who reviews it. Rejection sets status='rejected' and preserves is_locked=False, keeping the record available for re-review. The raw record is always retained as the correction foundation.
 
-**What was not built:** Role-based access control, a separate reviewer role, an auditor read-only role, approval workflows requiring a second reviewer, or any restriction preventing a user from approving their own ingestion.
+**What was not built:** Role-based access control, a separate reviewer role, an auditor read-only role, approval workflows requiring a second reviewer, any restriction preventing a user from approving their own ingestion, a rejection_reason field, data owner notifications, or a resubmission workflow connecting the analyst back to whoever provided the original data.
 
 **What breaks in production:**
-
 The absence of separation of duties is a known audit control gap. Most ESG assurance frameworks (GHG Protocol, ISO 14064, CDP) and financial audit standards require that the person who inputs data cannot be the same person who signs off on it. An analyst who runs the SAP ingestion and then approves those same records is performing both roles in a single-actor workflow. For a regulated submission, this would be flagged by an external auditor.
 
 An auditor read-only role does not exist. If an external auditor needs to inspect the dashboard, they would need to use the analyst credentials. This means they have approve and reject capabilities during their review, which is unsafe.
-
 There is no workflow for escalation or second approval. Some clients require dual approval for records above a CO₂e threshold, or for any record marked suspicious. None of that logic exists.
 
-**The cost of the cut:** Adding RBAC requires extending the UserProfile model with a role field, adding role checks to every view, building a separate auditor-facing read-only dashboard, and implementing whatever approval workflow the client's governance process requires. This is significant scope — likely two to three weeks of additional work — and requires a conversation with the client about their assurance requirements before the data model can be finalized.
+Rejection is also a silent operation toward the data owner. When an analyst rejects a record, the plant manager, facilities team, or travel desk who submitted the original data has no way of knowing it was rejected, why it was rejected, or what correction is needed. The raw record is preserved precisely so that corrected data can be compared against the original submission — but without a data owner persona, a rejection_reason field, and a resubmission path, that preservation has no mechanism to act on it. The correction loop exists in the data model but not in the workflow.
 
----
-
-## What Was Included Despite Being "Extra"
-
-Multi-tenancy scaffolding is present (Tenant model, tenant FK on every object, tenant-scoped querysets) even though only one tenant is exercised. This was included because retrofitting tenant isolation onto an existing schema is significantly more disruptive than including it from the start. The scaffold is cheap to add; the absence of it is expensive to fix.
+**The cost of the cut:** Adding RBAC requires extending the UserProfile model with a role field, adding role checks to every view, building a separate auditor-facing read-only dashboard, and implementing whatever approval workflow the client's governance process requires. Closing the rejection loop additionally requires a rejection_reason field on NormalizedEmissionRecord, a notification layer to alert data owners, and a resubmission path that ties corrected source data back to the originally rejected record. Together this is significant scope — needs more time and database modelling so that each role will be defined architecturally — and requires a conversation with the client about their assurance requirements and organizational structure before the data model can be finalized.

@@ -10,15 +10,15 @@
 Two principles are non-negotiable and every table in this model exists to serve them.
 
 **Principle 1 — Two-layer storage always.**
-Every ingestion creates two records: a Raw record that stores the source data exactly as it arrived, and a NormalizedEmissionRecord that stores the canonical, comparable output. Raw records are never modified. If normalization logic changes (new emission factor, corrected unit conversion), we reprocess from raw — the original source is always recoverable. This is what lets an auditor ask "where did this number come from" and get a truthful answer.
+Every ingestion creates two records: a Raw record that stores the source data exactly as it arrived, and a NormalizedEmissionRecord that stores the canonical, comparable output. Raw records are never modified. If normalization logic changes (new emission factor, corrected unit conversion), I reprocess from raw — the original source is always recoverable. This is what lets an auditor ask "where did this number come from" and get a truthful answer.
 
 **Principle 2 — One unified normalized table.**
 All three sources — SAP fuel procurement, utility electricity, corporate travel — write into a single `NormalizedEmissionRecord` table. A `source_type` field identifies the origin. A generic FK (`raw_record_id` + `raw_record_type`) points back to whichever raw table produced it. This is what makes cross-source reporting (Scope 1 + 2 + 3 totals, comparisons over time) possible without UNION queries or application-side joins.
 
 **Principle 3 — Tenant isolation at every layer.**
-The system is multi-tenant from the ground up, designed to run multiple clients securely within a single database instance (such as our single Render PostgreSQL instance). Every data-bearing table carries a `tenant` FK. The `_get_tenant(request)` helper resolves the authenticated user's tenant on every API call via `UserProfile`, and every queryset filters by that tenant before any other condition is applied. No query touches rows from another tenant. 
+The system is multi-tenant from the ground up, designed to run multiple clients securely within a single database instance (such as my single Render PostgreSQL instance). Every data-bearing table carries a `tenant` FK. The `_get_tenant(request)` helper resolves the authenticated user's tenant on every API call via `UserProfile`, and every queryset filters by that tenant before any other condition is applied. No query touches rows from another tenant. 
 
-For the prototype deployment, we have implemented exactly two isolated tenants:
+For the prototype deployment, I have implemented exactly two isolated tenants:
 * **Acme Industries** (associated with the `analyst` user account)
 * **Beta Corp** (associated with the `reviewer` user account)
 
@@ -61,13 +61,13 @@ The top-level isolation boundary. Every queryable object in the system carries a
 | slug | SlugField(100) | e.g. "acme" — used in URLs and seed |
 | created_at | DateTimeField | auto |
 
-Every data-bearing table carries a `tenant` FK. All querysets are scoped by tenant — the `_get_tenant(request)` helper resolves the authenticated user's tenant via `UserProfile`, and every view filters against it before returning data. In our Render deployment, a single PostgreSQL database serves both the `Acme Industries` (`analyst`) and `Beta Corp` (`reviewer`) tenants with strict row-level isolation.
+Every data-bearing table carries a `tenant` FK. All querysets are scoped by tenant — the `_get_tenant(request)` helper resolves the authenticated user's tenant via `UserProfile`, and every view filters against it before returning data. In my Render deployment, a single PostgreSQL database serves both the `Acme Industries` (`analyst`) and `Beta Corp` (`reviewer`) tenants with strict row-level isolation.
 
 ---
 
 ### User-to-Tenant Link — `core_userprofile`
 
-This table acts as the association bridge linking Django's built-in authentication system with our multi-tenant boundary. Each database user is assigned to exactly one tenant profile to enforce strict row-level query isolation during API requests.
+This table acts as the association bridge linking Django's built-in authentication system with my multi-tenant boundary. Each database user is assigned to exactly one tenant profile to enforce strict row-level query isolation during API requests.
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -82,7 +82,7 @@ This table acts as the association bridge linking Django's built-in authenticati
 
 ### SAP Plant Code LookUp Table — `ingestion_plantlookup`
 
-SAP plant codes are opaque identifiers (1010, 2030, 3050). Without a lookup table, we cannot determine the geographic region for an emission record, which affects the emission factor applied for electricity and is required for audit reporting.
+SAP plant codes are opaque identifiers (1010, 2030, 3050). Without a lookup table, I cannot determine the geographic region for an emission record, which affects the emission factor applied for electricity and is required for audit reporting.
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -105,14 +105,14 @@ One batch per SAP trigger call. Tracks the simulation scenario (e.g., dynamic ge
 |-------|------|-------|
 | id | PK | |
 | tenant | FK(Tenant) | |
-| ingestion_source | CharField(200) | "dynamic_generator" or filename |
+| ingestion_source | CharField(200) | "dynamic_generator" or simulation payload name (e.g. "sap_high_quantity.json") |
 | status | CharField | processing / done / failed |
 | raw_payload | JSONField | entire OData response stored verbatim |
 | rows_total | IntegerField | |
 | rows_failed | IntegerField | default 0 |
 | created_at | DateTimeField | auto |
 
-`raw_payload` stores the entire OData JSON as received. This is the source-of-truth for "what did SAP actually send us." If a normalizer bug is found later, we can reprocess from this field without re-triggering the SAP endpoint.
+`raw_payload` stores the entire OData JSON as received. This is the source-of-truth for "what did SAP actually send me." If a normalizer bug is found later, I can reprocess from this field without re-triggering the SAP endpoint.
 
 ---
 
@@ -138,7 +138,14 @@ One row per purchase order line item in the SAP OData response. Fields are named
 | source_row_hash | CharField(64) | SHA256 of PO+item+qty+date+plant — dedup key |
 | created_at | DateTimeField | auto |
 
-`source_row_hash` is computed from the identifying fields of each purchase order line (plant code, material group, quantity, document date, PO number, PO item) before the row is inserted. On every ingestion trigger — whether from the dynamic generator or specific test simulation payloads — the hash of each incoming row is checked against existing `RawSAPRecord` rows for the same tenant. If a match exists, the row is skipped and counted as `duplicates_skipped` in the batch response. This prevents double-counting emissions when the same purchase order data arrives across multiple ingestion runs, which is the expected behavior when a client triggers ingestion more than once in the same reporting period.
+`source_row_hash` is a unique SHA-256 fingerprint generated from the identifying fields of each purchase order line (plant code, material group, quantity, document date, PO number, and PO item) before the row is saved. 
+
+During ingestion:
+* The system computes this hash for each incoming purchase order row.
+* It compares it against existing `RawSAPRecord` rows for that specific tenant.
+* If a match is found, the duplicate row is skipped and counted as `duplicates_skipped` in the batch summary.
+
+This deduplication mechanism prevents double-counting emissions if a user triggers the same API integration scenario multiple times within the same reporting period.
 
 ---
 
@@ -173,7 +180,7 @@ One row per billing line from the utility portal CSV. The 19-column schema is de
 | consumer_number | CharField(50) | nullable — MSEDCL-style |
 | usc_no | CharField(50) | nullable — TGSPDCL-style |
 | consumer_name | CharField(200) | |
-| tariff | CharField(50) | normalised tariff code: HT, LT, etc. |
+| tariff | CharField(50) | normalised tariff class: HT (High Tension), LT (Low Tension) |
 | raw_tariff_label | CharField(200) | original label as printed on bill |
 | circle_division | CharField(100) | geographic division for emission factor lookup |
 | billing_period_from | DateField | nullable |
@@ -181,7 +188,7 @@ One row per billing line from the utility portal CSV. The 19-column schema is de
 | previous_reading | DecimalField(12,3) | kWh meter reading |
 | present_reading | DecimalField(12,3) | kWh meter reading |
 | units_consumed | DecimalField(12,3) | present - previous, or stated if CT metered |
-| meter_constant | DecimalField(10,4) | nullable — CT ratio multiplier |
+| meter_constant | DecimalField(10,4) | child CT ratio multiplier (defaults to 1.0 for direct-read) |
 | meter_status | CharField(50) | OK / Defective / Average |
 | average_units | DecimalField(12,3) | nullable — used when meter_status != OK |
 | days_in_bill_cycle | IntegerField | nullable |
@@ -189,7 +196,12 @@ One row per billing line from the utility portal CSV. The 19-column schema is de
 | source_row_hash | CharField(64) | SHA256 of utility+meter_id+period_from+period_to |
 | created_at | DateTimeField | auto |
 
-Why four nullable identifier fields instead of one? Each utility uses a different name for what is functionally the same thing — the account identifier. Coercing them into a single field loses source fidelity. The normalizer resolves whichever is populated.
+**Deduplication Hash:**
+`source_row_hash` is computed as a SHA-256 fingerprint of the `utility` name, the active meter identifier (whichever of the four columns is populated), `billing_period_from`, and `billing_period_to`. This ensures that uploading the same billing cycle multiple times will not duplicate emissions data.
+
+* **Identifier Fragmentation:** Indian DISCOMs use non-standardized account numbers (e.g., BESCOM's `rr_number`, MSEDCL's `consumer_number`, and TGSPDCL's `usc_no`). Keeping these columns separate and nullable preserves source fidelity for audit trails, but requires the normalizer to dynamically inspect and resolve the active key at runtime.
+* **Geographic Factor Attribution:** Instead of applying a flat national average, the pipeline resolves the utility name to a specific state-level grid factor from the Central Electricity Authority (CEA) database (e.g., Karnataka/BESCOM: 0.82, Maharashtra/MSEDCL: 0.75, Telangana/TGSPDCL: 0.91 kg CO₂e/kWh), falling back to 0.82 kg CO₂e/kWh for unmapped utilities.
+* **Billing Cycle Alignment:** Billing periods rarely match calendar months (e.g., Jan 18 to Feb 17). The normalizer resolves this by assigning a `reporting_month` using a mathematical majority-of-days rule (counting the exact number of days spent in each calendar month, with ties going to the ending month), preventing data gaps when aggregating monthly emissions.
 
 ---
 
@@ -253,20 +265,20 @@ The canonical output table. Every row represents one normalized, auditable emiss
 | **Source tracing** | | |
 | source_type | CharField(20) | sap / utility / travel |
 | raw_record_id | PositiveIntegerField | ID of the originating raw record |
-| raw_record_type | CharField(50) | "RawSAPRecord" / "RawUtilityRecord" / "RawTravelRecord" |
+| raw_record_type | CharField(30) | "RawSAPRecord" / "RawUtilityRecord" / "RawTravelRecord" |
 | **Activity** | | |
 | activity_date | DateField | date of the emission activity |
 | reporting_month | CharField(7) | YYYY-MM — the reporting period label |
-| scope | CharField(5) | 1 / 2 / 3 |
-| activity_description | CharField(500) | human-readable description for analyst |
+| scope | CharField(1) | 1 / 2 / 3 |
+| activity_description | CharField(255) | human-readable description for analyst |
 | **Quantities** | | |
 | quantity_normalized | DecimalField(15,4) | in canonical unit (kWh, kg, km) |
 | unit_normalized | CharField(20) | canonical unit |
 | quantity_original | DecimalField(15,4) | as-received quantity |
 | unit_original | CharField(20) | as-received unit |
 | **Emission factor** | | |
-| emission_factor | DecimalField(20,8) | kg CO₂e per unit |
-| emission_factor_source | CharField(200) | "DEFRA 2023" / "CEA 2022-23" |
+| emission_factor | DecimalField(10,6) | kg CO₂e per unit |
+| emission_factor_source | CharField(100) | "DEFRA 2023" / "CEA 2022-23" |
 | co2e_kg | DecimalField(15,4) | quantity_normalized × emission_factor |
 | **Review state** | | |
 | status | CharField(20) | pending / suspicious / approved / rejected |
@@ -279,10 +291,9 @@ The canonical output table. Every row represents one normalized, auditable emiss
 | edit_note | TextField | reason for manual edit |
 | source_row_hash | CharField(64) | copied from raw record — dedup reference |
 | created_at | DateTimeField | auto |
-| updated_at | DateTimeField | auto |
 
 **Source reference uses `raw_record_id` + `raw_record_type`, not Django ContentTypes.**
-With exactly three source types that are fixed at design time, Django's ContentType framework adds unnecessary overhead — a dependency, a separate DB table, and a runtime lookup on every FK resolution. A `PositiveIntegerField` + `CharField(50)` pair is simpler, faster, and sufficient. The type string (`"RawSAPRecord"`, `"RawUtilityRecord"`, `"RawTravelRecord"`) maps to a concrete model in application code via a lookup dict. See DECISIONS.md.
+With exactly three source types that are fixed at design time, Django's ContentType framework adds unnecessary overhead — a dependency, a separate DB table, and a runtime lookup on every FK resolution. A `PositiveIntegerField` + `CharField(30)` pair is simpler, faster, and sufficient. The type string (`"RawSAPRecord"`, `"RawUtilityRecord"`, `"RawTravelRecord"`) maps to a concrete model in application code via a lookup dict. See DECISIONS.md.
 
 **`reviewed_by` uses `on_delete=SET_NULL`, not CASCADE.**
 If an analyst's user account is deleted, the records they approved must not be deleted with it. The approval event is real and may already be in a regulatory filing. `SET_NULL` preserves the emission record and nulls only the FK. The analyst's username is captured at read time via the serializer.
@@ -297,14 +308,14 @@ A billing period from 18 January to 19 February belongs to February by majority 
 
 ## Scope Classification
 
-| Source | Scope | Rationale |
-|--------|-------|-----------|
-| SAP — all fuel types (FUEL01–FUEL04) | 1 | Direct combustion at company-owned facilities |
-| Utility — electricity | 2 | Purchased indirect energy — company does not own generation |
-| Travel — flights | 3 | Business travel, third-party carrier |
-| Travel — hotels | 3 | Business travel, third-party property |
-| Travel — ground, company_vehicle | **1** | Direct combustion, company asset |
-| Travel — ground, third_party | 3 | Purchased transport service |
+| Source | Scope | GHG Protocol Category | Rationale |
+|--------|-------|-----------------------|-----------|
+| SAP — all fuel types (FUEL01–FUEL04) | 1 | Scope 1 — Stationary Combustion | Direct combustion, company-owned or operated assets |
+| Utility — electricity | 2 | Scope 2 — Purchased Electricity | Purchased indirect energy — company does not own generation |
+| Travel — flights | 3 | Scope 3 — Cat. 6 Business Travel | Business travel, third-party carrier |
+| Travel — hotels | 3 | Scope 3 — Cat. 6 Business Travel | Business travel, third-party property |
+| Travel — ground, company_vehicle | 1 | Scope 1 — Mobile Combustion | Direct combustion, company asset (mobile combustion) |
+| Travel — ground, third_party | 3 | Scope 3 — Cat. 6 Business Travel | Purchased transport service |
 
 Ground transport scope is determined by `provider_type`, not `expense_type`. A taxi and a company car are both "ground transport" by expense type, but they sit in different scopes — one is a direct emission from a company asset, the other is a purchased service from a third party.
 
@@ -321,7 +332,7 @@ The assignment requires tracking which source produced each row, when it was ing
 `created_at` on the raw record is the ingestion timestamp — set automatically on insert, never modified. For SAP, the batch record also carries `created_at` covering the full trigger call. For utility and travel, the batch record stores the original upload filename and timestamp.
 
 **Was it manually edited after ingestion?**
-`edited_manually` (BooleanField) is set to `True` any time a field on the normalized record is hand-corrected after normalization. `edit_note` (TextField) captures the analyst's stated reason. `updated_at` on the normalized record records when the last modification occurred. Together, these three fields make any post-normalization intervention visible and attributable.
+The database schema includes placeholders `edited_manually` (BooleanField) and `edit_note` (TextField) to support future manual correction workflows. However, in the current implementation, post-normalization manual edits are **not supported**; there is no API endpoint or UI interface to hand-correct a record after normalization. Thus, `edited_manually` remains `False` and `edit_note` remains empty. (Additionally, the `updated_at` field is omitted from the model as records are immutable upon ingestion and only transition between review statuses).
 
 ---
 
@@ -331,12 +342,12 @@ The audit trail is not a feature — it is a structural property of the schema.
 
 For any row in `NormalizedEmissionRecord`, an auditor can answer:
 
-- **Where did this come from?** → `source_type` + `raw_record_id` + `raw_record_type` → join to the exact raw record
-- **What did the source actually send?** → raw record fields, or `raw_payload` on the SAP batch
-- **When was it ingested?** → `raw_record.created_at`
-- **What emission factor was applied, and from where?** → `emission_factor` + `emission_factor_source`
-- **Who reviewed it?** → `reviewed_by` (User FK) at time of review
-- **When was it locked?** → `reviewed_at` + `is_locked=True`
-- **Was it ever manually corrected after ingestion?** → `edited_manually` + `edit_note` + `updated_at`
+- **Where did this come from?** → `source_type` + `raw_record_id` + `raw_record_type` → joins directly to the exact raw record (`RawSAPRecord`, `RawUtilityRecord`, or `RawTravelRecord`).
+- **What did the source actually send?** → The raw fields of the corresponding raw record, the original uploaded CSV name (`source_file_name`) stored on the Utility/Travel ingestion batches, or the verbatim JSON response (`raw_payload`) stored on the SAP batch.
+- **When was it ingested, and in what batch context?** → The batch creation timestamp (`created_at`) and the row insertion timestamp (`raw_record.created_at`), which record the exact operational execution run.
+- **What emission factor was applied, and from where?** → `emission_factor` + `emission_factor_source` (e.g., state-specific grid factors from CEA 2023 for utilities, Defra factors for travel routes, or location-based factors for SAP plants).
+- **Who reviewed it?** → `reviewed_by` (User FK) captures which user (e.g. analyst/reviewer) approved or rejected the entry.
+- **When was it locked?** → `reviewed_at` timestamp and `is_locked=True` establish the immutable audit boundaries.
+- **Was it ever manually corrected after ingestion?** → Post-normalization manual overrides are **not supported** (no API endpoint or UI exists to edit records). The fields `edited_manually` (always `False`) and `edit_note` (always empty) exist in the database model solely as schema placeholders to support future manual correction workflows.
 
-This chain — source → raw → normalized → reviewed → locked — is complete and unbroken.
+This chain — source → batch/raw → normalized → reviewed → locked — is complete, balanced across all three ingestion streams, and entirely unbroken.

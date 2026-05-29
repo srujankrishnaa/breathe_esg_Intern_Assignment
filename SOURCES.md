@@ -23,17 +23,15 @@ Key findings from researching real SAP OData responses:
 
 **PO structure:** Each purchase order has a header (PurchaseOrder number, CompanyCode, Supplier) and one or more line items (PurchaseOrderItem, Material, MaterialGroup, OrderQuantity, Plant, DocumentDate).
 
-### What the Mock Data Captures
+### What the Mock Data Captures (and Why)
 
-Three static JSON files and a dynamic generator, all in OData V2 format with the `{"d": {"results": [...]}}` or `{"value": [...]}` envelope:
+**Why this format:** As documented in `DECISIONS.md`, I chose to mimic SAP OData V2 JSON responses rather than older legacy formats (IDocs, BAPIs) because OData is the modern standard for SAP integration via SAP Gateway. Generating JSON payloads accurately represents what a middleware (like MuleSoft) or a direct API pull would encounter, allowing me to test exact schema mappings.
 
-**sap_normal.json** — 6 purchase order line items across plants 1010, 2030, 3050. Mix of FUEL01 (diesel, L), FUEL02 (petrol, L), FUEL03 (LPG, KG), FUEL04 (furnace oil, TO). DocumentDate in `/Date(ms)/` format. Quantities below 100,000 units. PO numbers in the SAP format: "45" prefix + 8 digits.
+The sample data uses the OData V2 JSON envelope format (`{"d": {"results": [...]}}` or `{"value": [...]}`). It captures realistic variations of purchase order line items across my regional plants, including:
 
-**sap_high_quantity.json** — Same structure, but two rows have OrderQuantity above 100,000 units. These trigger the `suspicious` status in the normalizer because quantities that large are unusual for a single purchase order line and may indicate a data entry error (e.g. KG entered instead of TO).
-
-**sap_unknown_plant.json** — One row with a plant code (9999) not present in the PlantLookup seed data. This triggers a suspicious flag because without a plant lookup, the geographic region cannot be determined and the emission record is incomplete.
-
-**sap_generator.py** — Produces a fresh OData payload on every call. Randomises PO numbers (format: "45" + 8 random digits) so that two successive calls to the SAP trigger endpoint produce different rows — no duplicates skipped. Enforces the LPG constraint: FUEL03 always gets KG or TO, never L or GAL. Quantities capped below 100,000.
+- **Standard Procurement:** A mix of volume-based fuels (diesel in Litres) and weight-based fuels (LPG in Kilograms/Tonnes), utilizing correct SAP date formats and material group codes.
+- **Outlier Scenarios:** Orders with unusually high quantities (e.g., >100,000 units) that mimic data entry errors (like entering KG instead of TO) to test suspicious flagging logic.
+- **Geographic Misalignments:** POs tied to unknown plant codes, proving that the system can catch records where regional emission factors cannot be resolved.
 
 ### What Would Break in Real Deployment
 
@@ -53,11 +51,13 @@ Three static JSON files and a dynamic generator, all in OData V2 format with the
 
 ### What Was Researched
 
-India has 28 state DISCOMs (Distribution Companies) plus several privatised utilities in metros. The major ones relevant to the three plant locations in this prototype:
+India has 28 state DISCOMs (Distribution Companies) plus several privatised utilities in metros. The major ones researched and utilized in the mock data for this prototype include:
 
 - **MSEDCL** (Maharashtra State Electricity Distribution Co. Ltd) — covers Mumbai Factory (plant 1010), Maharashtra
 - **BRPL / BYPL** (BSES) or **TPDDL** — covers Delhi Warehouse (plant 2030), Delhi
 - **TANGEDCO** (Tamil Nadu Generation and Distribution Corporation) — covers Chennai Plant (plant 3050), Tamil Nadu
+- **TGSPDCL** (Telangana State Southern Power Distribution Company Limited) — covers Telangana region
+- **BESCOM** (Bangalore Electricity Supply Company Limited) — covers Karnataka region
 
 Key findings from researching actual Indian utility bill exports:
 
@@ -73,19 +73,18 @@ Key findings from researching actual Indian utility bill exports:
 
 **CEA emission factor:** The Central Electricity Authority publishes grid emission factors. For 2022-23 (Version 18.0, published in 2023), the national average is 0.716 kg CO₂e per kWh. To improve carbon accounting precision, the prototype maps specific utilities (DISCOMs) to their corresponding state-level grid factors from the CEA 2022-23 database (Karnataka/BESCOM: 0.82, Maharashtra/MSEDCL: 0.75, Telangana/TGSPDCL: 0.91 kg CO₂e/kWh), falling back to 0.82 kg CO₂e/kWh for unmapped utilities.
 
-### What the Mock Data Captures
+### What the Mock Data Captures (and Why)
 
-Five CSV files using a 19-column schema that covers the union of fields across BESCOM, MSEDCL, TGSPDCL, and TANGEDCO exports:
+**Why this format:** As outlined in `DECISIONS.md`, I chose CSV portal exports rather than PDF bills or direct APIs. PDF parsing requires complex layout-aware OCR which introduces noise and brittleness. Direct utility APIs are practically non-existent or heavily gated for the Indian DISCOMs researched. CSV exports are the real-world format facilities managers use to download bulk data, and they are structured and easy to reliably mimic for the prototype.
 
-**utility_normal.csv** — Monthly bills from three meters, one per plant. Billing periods that cross month boundaries. Mix of HT (plant 1010, Mumbai) and LT (plants 2030, 3050) tariffs. CT-metered plant 1010 has a `meter_constant` of 40. Normal meter status.
+To simulate a realistic, region-specific ESG inventory audit, the mock datasets tie your registered facility regions (Mumbai/Maharashtra, Delhi, Chennai/Tamil Nadu) and additional test regions (Karnataka, Telangana) directly to their local electricity grids (MSEDCL, TANGEDCO, BESCOM, TGSPDCL) and business travel routes (e.g., BOM to DEL flights). This regional alignment proves that the platform can ingest disparate data points and correctly map them back to localized emission factors.
 
-**utility_suspicious.csv** — Rows with `units_consumed` above the 95th percentile threshold for an LT commercial connection (flagged as suspicious, possibly wrong reading units — MWh entered as kWh). One row with `meter_status = Defective` and no `average_units` — flagged because consumption cannot be estimated.
+The sample data is structured as flat CSV exports utilizing a 19-column schema that represents the union of fields across major Indian utility portals. It captures:
 
-**utility_billing_misalignment.csv** — Billing periods that cross month boundaries (e.g. Dec 22 – Jan 21). Tests the majority-month attribution rule — 10 days in December, 21 days in January → January wins → `reporting_month = 2026-01`.
-
-**utility_multi_meter.csv** — Multiple meters at a single plant (Mumbai Factory): HVAC meter, production meter, office meter. Different tariffs (HT and LT) and meter constants. Tests that per-meter consumption is normalised independently.
-
-**utility_multi_utility.csv** — Rows from three different DISCOMs (BESCOM, MSEDCL, TGSPDCL) in one file. Tests that the normaliser correctly routes each row to the right state-level emission factor.
+- **Standard Billing:** Monthly and bimonthly bills spanning multiple geographic tariffs (High Tension vs Low Tension), incorporating CT meter constants for large industrial loads.
+- **Billing Period Misalignments:** Bills spanning across month boundaries (e.g., Dec 18 - Jan 17) to demonstrate the majority-month attribution rule.
+- **Multi-Meter & Multi-Utility Complexity:** Multiple meters aggregated at a single plant, and singular files containing rows from entirely different DISCOMs to prove correct regional emission factor routing.
+- **Data Quality Issues:** Defective meter statuses and statistically unlikely consumption spikes that would trigger review from an analyst in the real world.
 
 ### What Would Break in Real Deployment
 
@@ -133,19 +132,16 @@ A business class flight emits approximately 2.8x more per passenger than economy
 
 **IATA distance lookup.** The prototype uses a hardcoded table of IATA airport pairs for major Indian routes (BOM-DEL, BOM-BLR, DEL-BLR, etc.) plus selected international routes. Unknown route pairs (both codes present but not in the lookup) trigger a suspicious flag — the emission cannot be calculated without the distance.
 
-### What the Mock Data Captures
+### What the Mock Data Captures (and Why)
 
-Five CSV files with the full 35-column travel schema covering all three expense types in a single file (expense_type column distinguishes them):
+**Why this format:** As discussed in `DECISIONS.md`, I opted for CSV exports mimicking Concur/Navan rather than direct API integrations (which are often locked behind enterprise OAuth scopes). CSV reports are the standard way corporate travel managers extract historical booking data. Mimicking this format allowed me to easily generate large varieties of test data (different cabin classes, cancellations, scopes) that match the exact shape of real-world exports.
 
-**travel_normal_flights.csv** — 8 flight segments. Mix of IndiGo, Air India, Vistara. Economy and business class. Domestic routes (BOM-DEL, BLR-HYD) and one international (BOM-LHR). Return trips represented as two separate segments (this is how Concur exports them). All routes in the IATA distance lookup.
+The sample data is structured as flat CSV exports utilizing a 35-column schema that covers flights, hotels, and ground transport within unified exports. It captures:
 
-**travel_hotels.csv** — 3 hotel stays. Marriott Mumbai, Taj Palace Delhi, Premier Inn London. Check-in/check-out dates, room counts, country code IN and GB. Tests country-specific hotel emission factor lookup.
-
-**travel_ground_mix.csv** — 3 ground transport rows. One company vehicle (Scope 1, diesel, 120 km). One taxi via third-party (Scope 3, 45 km). One intercity train via third-party (Scope 3, 280 km). Tests the provider_type → Scope classification split.
-
-**travel_flagged.csv** — Cancelled flight (booking_status = cancelled). Unknown IATA route (ZZZ-YYY). Hotel with zero nights (check_in = check_out — data entry error). Ground transport with provider_type = company_vehicle but no distance_km.
-
-**travel_cabin_mix.csv** — Flights with mixed cabin classes (business and economy) across different carriers and routes. Tests that cabin class correctly affects the emission factor applied (business ≈ 2.8× economy).
+- **Flight Variations:** Domestic and international segments spanning multiple carriers, alongside mixed cabin classes (Economy vs Business) to demonstrate the stark difference in applied emission multipliers.
+- **Hotel Stays:** Multi-night stays across different global regions (India, UK) to test country-specific hotel emission factors.
+- **Ground Transport & Scope Mapping:** A mix of company-owned vehicles versus third-party transport to demonstrate how ownership correctly splits identical travel modes into Scope 1 versus Scope 3.
+- **Booking Anomalies:** Cancelled bookings, unknown IATA routes, and missing distance metrics that represent common data quality gaps requiring analyst intervention.
 
 ### What Would Break in Real Deployment
 
